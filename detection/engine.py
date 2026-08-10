@@ -1,5 +1,5 @@
-from src.capture.sniffer import start_sniffing
-from src.detection.rules import analyze_packet
+from capture.sniffer import start_sniffing
+from detection.rules import analyze_packet
 
 
 def engine_packet_handler(packet):
