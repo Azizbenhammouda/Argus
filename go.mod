@@ -1,4 +1,4 @@
-module github.com/Azizbenhammouda/mcp-servers/myIDS
+module github.com/Azizbenhammouda/mcp-servers/Argus
 
 go 1.26.5
 
