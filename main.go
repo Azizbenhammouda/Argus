@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/google/gopacket"
+	"github.com/Azizbenhammouda/Argus/capture"
+	"github.com/Azizbenhammouda/Argus/detect"
+	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
 )
 
@@ -22,16 +24,25 @@ func main() {
 			fmt.Println("  Netmask: ", address.Netmask)
 		}
 	}
-	//connecting to the live packet stream (raw pcap connection)
-	handle, err := pcap.OpenLive("eth0", 1600, true, pcap.BlockForever)
+	src, handler, err := capture.StartCapture("eth0")
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer handle.Close()
-	//decoding raw bytes into gopacket.Packet objects
-	//Linktype is for the method to know if its ethernet wifi wala loopback
-	packsrc := gopacket.NewPacketSource(handle, handle.LinkType())
-	for packet := range packsrc.Packets() {
-		fmt.Println(packet)
+	defer handler.Close()
+	for packet := range src.Packets() {
+		//return the tcp layer of the packet
+		tcpLayer := packet.Layer(layers.LayerTypeTCP)
+		// not handlind UDP or ICMP.. rn
+		if tcpLayer == nil {
+			continue
+		}
+		tcp, ok := tcpLayer.(*layers.TCP)
+		if !ok {
+			continue
+		}
+		suspicious, reason := detect.IsNullScan(tcp)
+		if suspicious {
+			fmt.Printf("%s: %v -> %v\n", reason, tcp.SrcPort, tcp.DstPort)
+		}
 	}
 }
