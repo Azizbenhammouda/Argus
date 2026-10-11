@@ -1,48 +1,52 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"log"
 
+	"github.com/Azizbenhammouda/Argus/alerts"
 	"github.com/Azizbenhammouda/Argus/capture"
 	"github.com/Azizbenhammouda/Argus/detect"
-	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
 )
 
 func main() {
-	// listing network interfaces in the machine
+	device := flag.String("i", "", "network interface to listen on (e.g. eth0)")
+	logPath := flag.String("log", "argus.log", "path to write alert log")
+	flag.Parse()
+
 	ifcs, err := pcap.FindAllDevs()
 	if err != nil {
 		log.Fatal(err)
 	}
-	for _, ifc := range ifcs {
-		fmt.Printf("Name: %v\n", ifc.Name)
-		fmt.Printf("Description: %v\n", ifc.Description)
-		for _, address := range ifc.Addresses {
-			fmt.Println("  IP:      ", address.IP)
-			fmt.Println("  Netmask: ", address.Netmask)
+
+	if *device == "" {
+		fmt.Println("No interface given. Available interfaces:")
+		for _, ifc := range ifcs {
+			fmt.Printf("  %-10s %s\n", ifc.Name, ifc.Description)
+			for _, addr := range ifc.Addresses {
+				fmt.Printf("      IP: %-15v Netmask: %v\n", addr.IP, addr.Netmask)
+			}
 		}
+		fmt.Println("\nUsage: sudo ./argus -i <interface>")
+		return
 	}
-	src, handler, err := capture.StartCapture("eth0")
+
+	al := alerts.New(*logPath)
+	defer al.Close()
+
+	engine := detect.NewEngine(al)
+
+	src, handler, err := capture.StartCapture(*device)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer handler.Close()
+
+	fmt.Printf("Argus NIDS listening on %s (alerts -> stdout + %s). Ctrl+C to stop.\n", *device, *logPath)
+
 	for packet := range src.Packets() {
-		//return the tcp layer of the packet
-		tcpLayer := packet.Layer(layers.LayerTypeTCP)
-		// not handlind UDP or ICMP.. rn
-		if tcpLayer == nil {
-			continue
-		}
-		tcp, ok := tcpLayer.(*layers.TCP)
-		if !ok {
-			continue
-		}
-		suspicious, reason := detect.IsNullScan(tcp)
-		if suspicious {
-			fmt.Printf("%s: %v -> %v\n", reason, tcp.SrcPort, tcp.DstPort)
-		}
+		engine.Inspect(packet)
 	}
 }
